@@ -1,6 +1,7 @@
 ## Import packages
 library(tidyverse)
 library(lubridate) # to convert year-month to year-quarter
+library(patchwork)
 
 ## Explore resolution of data (aggregated by month, quarter, and year)
 
@@ -61,34 +62,43 @@ idaho_accidents_summary <- data.frame(
 
 x_levels <- 0:35
 # Histogram, resolution = month
-idaho_accidents_full_monthly %>%
+monthly <- idaho_accidents_full_monthly %>%
   ggplot(aes(x = factor(n_accidents))) +
   geom_bar(aes(y = after_stat(100 * count / sum(count)))) +
   scale_y_continuous(breaks = seq(0, 100, 10), limits = c(0, 100)) +
-  scale_x_discrete(limits = as.character(x_levels)) +
+  scale_x_discrete(limits = as.character(x_levels),
+                   breaks = seq(0, 35, 2)) +
   labs(
     x = "Fatal crash count",
     y = "% of observations",
-    title = "Monthly resolution") +
+    title = paste0("Monthly resolution", " (n=", idaho_accidents_summary[1,2]
+                   , ")")) +
   theme_bw()
 
 # Histogram, resolution = quarterly
-idaho_accidents_full_quarterly %>%
+quarterly <- idaho_accidents_full_quarterly %>%
   ggplot(aes(x = factor(n_accidents))) +
   geom_bar(aes(y = after_stat(100 * count / sum(count)))) +
   scale_y_continuous(breaks = seq(0, 100, 10), limits = c(0, 100)) +
-  scale_x_discrete(limits = as.character(x_levels)) +
+  scale_x_discrete(limits = as.character(x_levels),
+                   breaks = seq(0, 35, 2)) +
   labs(x = "Fatal crash count", 
        y = "% of observations",
-       title = "Quarterly resolution") +
+       title = paste0("Quarterly resolution", " (n=", 
+                      idaho_accidents_summary[2,2]
+                      , ")")) +
   theme_bw()
 
 # Histogram, resolution = yearly
-idaho_accidents_full_yearly %>%
+yearly <- idaho_accidents_full_yearly %>%
   ggplot(aes(x = factor(n_accidents))) +
   geom_bar(aes(y = after_stat(100 * count / sum(count)))) +
   scale_y_continuous(breaks = seq(0, 100, 10), limits = c(0, 100)) +
-  scale_x_discrete(limits = as.character(x_levels)) +
+  scale_x_discrete(limits = as.character(x_levels),
+                   breaks = seq(0, 35, 2)) +
   labs(x = "Fatal crash count", y = "% of observations", 
-       title = "Yearly resolution") +
+       title = paste0("Yearly resolution", " (n=", idaho_accidents_summary[3,2]
+                      , ")")) +
   theme_bw()
+
+monthly + quarterly + yearly
