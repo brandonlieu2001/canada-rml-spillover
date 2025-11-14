@@ -59,7 +59,6 @@ idaho_accidents_summary <- data.frame(
   )
 )
 
-
 x_levels <- 0:35
 # Histogram, resolution = month
 monthly <- idaho_accidents_full_monthly %>%

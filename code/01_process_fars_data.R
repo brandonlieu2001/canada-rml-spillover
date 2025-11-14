@@ -62,7 +62,6 @@ ggplot(data = idaho_accidents_full_monthly,
        aes(x = DATE, 
            y = n_accidents, color = as.factor(COUNTY))) +
   geom_point() +
-  scale_y_continuous(breaks = seq(0, 100)) +
   scale_x_date(date_labels = "%Y", 
                date_breaks = "1 year") +
   geom_vline(xintercept = as.Date("2018-10-15"), 
@@ -73,6 +72,6 @@ ggplot(data = idaho_accidents_full_monthly,
        title = "Idaho: Fatal Accidents by County Per Month") +
   theme_bw()
 
-# Write out Idaho data to `data_processed/`
+# Write out Idaho data (aggregated by month) to `data_processed/`
 write_csv(idaho_accidents_full_monthly, 
           "data_processed/idaho_accident_person_data.csv")
