@@ -31,6 +31,10 @@ for (year in year_directory) {
   idaho <- bind_rows(idaho, rows_to_add)
 }
 
+# Filter data for accidents that only include vehicle occupants >= 19 years
+idaho <- idaho %>% 
+  filter(AGE >= 19 | is.na(AGE) | VEH_NO == 0)
+
 # Calculate the number of accidents in all Idaho counties over time
 idaho_accidents <- idaho %>% 
   group_by(YEAR, MONTH, COUNTY) %>% 
@@ -50,6 +54,11 @@ idaho_accidents_full_monthly <- all_years_months %>%
   mutate(n_accidents = replace_na(n_accidents, 0)) %>%
   arrange(COUNTY, YEAR, MONTH)
 
+# Write out Idaho data (aggregated by month) to `data_processed/`
+write_csv(idaho_accidents_full_monthly, 
+          "data_processed/idaho_accident_person_data.csv")
+
+### Exploratory plotting (monthly) ###
 # Add date column
 idaho_accidents_full_monthly <- idaho_accidents_full_monthly %>% 
   mutate(DATE = paste(YEAR, MONTH, sep = "-"))
@@ -71,7 +80,3 @@ ggplot(data = idaho_accidents_full_monthly,
        color = "County Code",
        title = "Idaho: Fatal Accidents by County Per Month") +
   theme_bw()
-
-# Write out Idaho data (aggregated by month) to `data_processed/`
-write_csv(idaho_accidents_full_monthly, 
-          "data_processed/idaho_accident_person_data.csv")
