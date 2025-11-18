@@ -83,3 +83,4 @@ did_plot + geom_label(
     show.legend = FALSE
   )
 
+# Naive DiD re
