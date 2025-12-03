@@ -1,6 +1,8 @@
 # Import packages
 library(tidyverse)
 library(lubridate) # to convert year-month to year-quarter
+source("code/utils.R")
+
 
 # Read in `person.csv` & `accident.csv` from each year
 year_directory <- list.files("data_raw")
@@ -17,82 +19,80 @@ num_years <- length(year_directory)
 
 for (i in 1:num_years) {
   accident_person_data[[year_directory[i]]] = 
-    left_join(person_data[[i]],  accident_data[[i]], by = "ST_CASE")
+    left_join(person_data[[i]], accident_data[[i]], by = "ST_CASE")
 }
 
-# Create Idaho data across all years
-idaho = data.frame()
-for (year in year_directory) {
-  rows_to_add <- accident_person_data[[year]] %>% 
-    select(STATE = STATE.x, COUNTY = COUNTY.x, ST_CASE, 
-           YEAR, MONTH = MONTH.x,
-           PER_NO, VEH_NO, ST_CASE, AGE) %>% 
-    filter(STATE == 16)
-  idaho <- bind_rows(idaho, rows_to_add)
-}
+## Process all states into monthly format
 
-# Filter data for accidents that only include vehicle occupants >= 19 years
-# and no NAs
-# VEH_NO = 0 indicates a non-vehicle occupant (e.g., pedestrian, cyclist)
-idaho <- idaho %>% 
-  filter(AGE >= 19 & !is.na(AGE) & VEH_NO != 0)
+# Create df that contains data from ALL states and years
+all_state_accident_person <-
+  bind_rows(lapply(year_directory, function(year) {
+    accident_person_data[[year]] %>%
+      select(
+        STATE = STATE.x,
+        COUNTY = COUNTY.x,
+        ST_CASE,
+        YEAR,
+        MONTH = MONTH.x,
+        PER_NO, VEH_NO,
+        AGE
+      )
+  }))
 
-# Calculate the number of accidents in all Idaho counties over time
-idaho_accidents <- idaho %>% 
-  group_by(YEAR, MONTH, COUNTY) %>% 
-  summarise(n_accidents = n_distinct(ST_CASE)) %>% 
-  arrange(COUNTY, YEAR, MONTH)
+# Alaska (FIPS 2): ages 19–20
+alaska_accidents_monthly <- get_monthly_cases(2, 19, 20)
 
-# Create a full grid of all year-month-county combinations
-all_years_months <- expand_grid(
-  YEAR = unique(idaho$YEAR),
-  MONTH = unique(idaho$MONTH),
-  COUNTY = unique(idaho$COUNTY)
-)
+# Washington (FIPS 53): ages 19–20
+washington_accidents_monthly <- get_monthly_cases(53, 19, 20)
 
-# Merge and fill missing counts with 0
-idaho_accidents_full_monthly <- all_years_months %>%
-  left_join(idaho_accidents, by = c("YEAR", "MONTH", "COUNTY")) %>%
-  mutate(n_accidents = replace_na(n_accidents, 0)) %>%
-  arrange(COUNTY, YEAR, MONTH)
+# Maine (FIPS 23): ages 19–20
+maine_accidents_monthly <- get_monthly_cases(23, 19, 20)
 
-# Write out Idaho data (aggregated by month) to `data_processed/`
-write_csv(idaho_accidents_full_monthly, 
-          "data_processed/idaho_accident_person_data.csv")
+# Vermont (FIPS 50): No treated age group, omit
+vermont_accidents_monthly <- NULL
 
+# Montana (FIPS 30): ages 18+
+montana_accidents_monthly <- get_monthly_cases(30, 18)
 
-# Process all states into quarterly format ####################################
+# Minnesota (FIPS 27): ages 19+
+minnesota_accidents_monthly <- get_monthly_cases(27, 19)
 
-# Create df that contains data from all states and years
-# all_state_accident_person = data.frame()
-# for (year in year_directory) {
-#   rows_to_add <- accident_person_data[[year]] %>% 
-#     select(STATE = STATE.x, COUNTY = COUNTY.x, ST_CASE, 
-#            YEAR, MONTH = MONTH.x,
-#            PER_NO, VEH_NO, ST_CASE, AGE) %>% 
-#     filter(STATE == 16)
-#   idaho <- bind_rows(idaho, rows_to_add)
-# }
+# New York (FIPS 36): ages 19+
+newyork_accidents_monthly <- get_monthly_cases(36, 19)
 
-# Exploratory plotting (monthly) ##############################################
-# Add date column
-idaho_accidents_full_monthly <- idaho_accidents_full_monthly %>% 
-  mutate(DATE = paste(YEAR, MONTH, sep = "-"))
+# Michigan (FIPS 26): ages 19+
+michigan_accidents_monthly <- get_monthly_cases(26, 19)
 
-idaho_accidents_full_monthly$DATE <- 
-  as.Date(paste0(idaho_accidents_full_monthly$DATE, "-01"))
+# North Dakota (FIPS 38): ages 19+
+northdakota_accidents_monthly <- get_monthly_cases(38, 19)
 
-# Plot using monthly data
-ggplot(data = idaho_accidents_full_monthly,
-       aes(x = DATE, 
-           y = n_accidents, color = as.factor(COUNTY))) +
-  geom_point() +
-  scale_x_date(date_labels = "%Y", 
-               date_breaks = "1 year") +
-  geom_vline(xintercept = as.Date("2018-10-15"), 
-             linetype = "dashed", color = "red", linewidth = 1) +
-  labs(x = "Time (year-month)", 
-       y = "Number of fatal accidents",
-       color = "County Code",
-       title = "Idaho: Fatal Accidents by County Per Month") +
-  theme_bw()
+# Ohio (FIPS 39): ages 19+
+ohio_accidents_monthly <- get_monthly_cases(39, 19)
+
+# Pennsylvania (FIPS 42): ages 19+
+pennsylvania_accidents_monthly <- get_monthly_cases(42, 19)
+
+# New Hampshire (FIPS 33): ages 21+
+newhampshire_accidents_monthly <- get_monthly_cases(33, 21)
+
+# Idaho (FIPS 16): ages 19+
+idaho_accidents_monthly <- get_monthly_cases(16, 19)
+
+# Wisconsin (FIPS 55): ages 19+
+wisconsin_accidents_monthly <- get_monthly_cases(55, 19)
+
+# Write out data (aggregated by month) to `data_processed/`
+write_csv(alaska_accidents_monthly,       "data_processed/alaska_accidents_monthly.csv")
+write_csv(washington_accidents_monthly,   "data_processed/washington_accidents_monthly.csv")
+write_csv(maine_accidents_monthly,        "data_processed/maine_accidents_monthly.csv")
+write_csv(montana_accidents_monthly,      "data_processed/montana_accidents_monthly.csv")
+write_csv(minnesota_accidents_monthly,    "data_processed/minnesota_accidents_monthly.csv")
+write_csv(newyork_accidents_monthly,      "data_processed/newyork_accidents_monthly.csv")
+write_csv(michigan_accidents_monthly,     "data_processed/michigan_accidents_monthly.csv")
+write_csv(northdakota_accidents_monthly,  "data_processed/northdakota_accidents_monthly.csv")
+write_csv(ohio_accidents_monthly,         "data_processed/ohio_accidents_monthly.csv")
+write_csv(pennsylvania_accidents_monthly, "data_processed/pennsylvania_accidents_monthly.csv")
+write_csv(newhampshire_accidents_monthly, "data_processed/newhampshire_accidents_monthly.csv")
+write_csv(idaho_accidents_monthly,        "data_processed/idaho_accidents_monthly.csv")
+write_csv(wisconsin_accidents_monthly,    "data_processed/wisconsin_accidents_monthly.csv")
+

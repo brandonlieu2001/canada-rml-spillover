@@ -17,7 +17,7 @@ for (year in year_directory) {
 
 # Filter data for accidents that only include vehicle occupants >= 19 years
 wisconsin <- wisconsin %>% 
-  filter(AGE >= 19 & !is.na(AGE) & VEH_NO != 0)
+  filter(AGE >= 19 & !is.na(AGE) & VEH_NO != 0 & COUNTY != 0)
 
 # Calculate the number of accidents in all Wisconsin counties over time
 wisconsin_accidents <- wisconsin %>% 
@@ -27,9 +27,9 @@ wisconsin_accidents <- wisconsin %>%
 
 # Create a full grid of all year-month-county combinations
 all_years_months <- expand_grid(
-  YEAR = unique(idaho$YEAR),
-  MONTH = unique(idaho$MONTH),
-  COUNTY = unique(idaho$COUNTY)
+  YEAR = unique(wisconsin$YEAR),
+  MONTH = unique(wisconsin$MONTH),
+  COUNTY = unique(wisconsin$COUNTY)
 )
 
 # Merge and fill missing counts with 0
