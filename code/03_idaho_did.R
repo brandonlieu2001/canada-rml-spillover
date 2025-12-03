@@ -1,11 +1,15 @@
 ## Import packages
 library(tidyverse)
-library(lubridate) # to convert year-month to year-quarter
-library(zoo) # for as.yearqtr
+library(lubridate)
+library(zoo)
 
 # Import processed data
 idaho_accidents_full_monthly <- 
   read.csv("data_processed/idaho_accident_person_data.csv")
+
+# Add date column
+idaho_accidents_full_monthly <- idaho_accidents_full_monthly %>% 
+  mutate(DATE = as.Date(paste(YEAR, MONTH, "01", sep = "-")))
 
 # Build quarterly dataset
 idaho_accidents_full_quarterly <- idaho_accidents_full_monthly %>%
@@ -45,7 +49,7 @@ idaho_accidents_plot <- idaho_accidents_did_data %>%
 idaho_accidents_plot <- idaho_accidents_plot %>% 
   mutate(date = sprintf("%i-%i-01", YEAR, (3 * (QUARTER - 1) + 1)))
 
-did_plot <-
+id_did_plot <-
   ggplot(idaho_accidents_plot, 
          aes(x = as.Date(date), y = mean_accidents, group = TREAT,
                color = as.factor(TREAT))) +
@@ -56,7 +60,7 @@ did_plot <-
   geom_vline(xintercept = as.Date("2018-10-01"),
             linetype = "dashed", color = "black", linewidth = 1) +
   labs(
-    title = "Quarterly Fatal Accident Counts, Idaho",
+    title = "Quarterly Fatal Accident Counts, ID",
     x = "Year-quarter",
     y = "Average number of accidents",
     color = "Treatment Group"
@@ -65,15 +69,10 @@ did_plot <-
   scale_color_manual(
     values = c("0" = "#0072B2", "1" = "#D55E00"),
     labels = c("0" = "Control counties (remaining 43 counties)",
-               "1" = "Treatment county (Boundary County, ID)")) +
-  annotate("text", x = as.Date("2018-10-01"), y = 2.0,
-           label = "Canada RML (Oct 2018)",
-           size = 3.5, hjust = -0.1, vjust = -0.5) 
-did_plot
-
+               "1" = "Treatment county (Boundary County, ID)"))
 
 # Add mean labels
-did_plot + geom_label(
+id_did_plot <- id_did_plot + geom_label(
     data = idaho_accidents_did_summary,
     aes(
       x = as.Date(ifelse(POST == 0, "2016-04-01", "2022-04-01")), 
@@ -83,4 +82,9 @@ did_plot + geom_label(
     show.legend = FALSE
   )
 
-# Naive DiD re
+id_did_plot
+
+# Naive DiD regression
+model <- lm(n_accidents ~ TREAT + POST + (TREAT * POST), 
+            data = idaho_accidents_did_data)
+summary(model)
