@@ -32,8 +32,10 @@ for (year in year_directory) {
 }
 
 # Filter data for accidents that only include vehicle occupants >= 19 years
+# and no NAs
+# VEH_NO = 0 indicates a non-vehicle occupant (e.g., pedestrian, cyclist)
 idaho <- idaho %>% 
-  filter(AGE >= 19 | is.na(AGE) | VEH_NO == 0)
+  filter(AGE >= 19 & !is.na(AGE) & VEH_NO != 0)
 
 # Calculate the number of accidents in all Idaho counties over time
 idaho_accidents <- idaho %>% 
@@ -58,7 +60,21 @@ idaho_accidents_full_monthly <- all_years_months %>%
 write_csv(idaho_accidents_full_monthly, 
           "data_processed/idaho_accident_person_data.csv")
 
-### Exploratory plotting (monthly) ###
+
+# Process all states into quarterly format ####################################
+
+# Create df that contains data from all states and years
+# all_state_accident_person = data.frame()
+# for (year in year_directory) {
+#   rows_to_add <- accident_person_data[[year]] %>% 
+#     select(STATE = STATE.x, COUNTY = COUNTY.x, ST_CASE, 
+#            YEAR, MONTH = MONTH.x,
+#            PER_NO, VEH_NO, ST_CASE, AGE) %>% 
+#     filter(STATE == 16)
+#   idaho <- bind_rows(idaho, rows_to_add)
+# }
+
+# Exploratory plotting (monthly) ##############################################
 # Add date column
 idaho_accidents_full_monthly <- idaho_accidents_full_monthly %>% 
   mutate(DATE = paste(YEAR, MONTH, sep = "-"))

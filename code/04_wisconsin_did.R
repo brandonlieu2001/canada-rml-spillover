@@ -17,7 +17,7 @@ for (year in year_directory) {
 
 # Filter data for accidents that only include vehicle occupants >= 19 years
 wisconsin <- wisconsin %>% 
-  filter(AGE >= 19 | is.na(AGE) | VEH_NO == 0)
+  filter(AGE >= 19 & !is.na(AGE) & VEH_NO != 0)
 
 # Calculate the number of accidents in all Wisconsin counties over time
 wisconsin_accidents <- wisconsin %>% 
