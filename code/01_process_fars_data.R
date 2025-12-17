@@ -49,7 +49,7 @@ washington_accidents_monthly <- get_monthly_cases(53, 19, 20)
 maine_accidents_monthly <- get_monthly_cases(23, 19, 20)
 
 # Vermont (FIPS 50): No treated age group, omit
-vermont_accidents_monthly <- NULL
+vermont_accidents_monthly <- get_monthly_cases(50, 19, 20)
 
 # Montana (FIPS 30): ages 18+
 montana_accidents_monthly <- get_monthly_cases(30, 18)
@@ -85,6 +85,7 @@ wisconsin_accidents_monthly <- get_monthly_cases(55, 19)
 write_csv(alaska_accidents_monthly,       "data_processed/alaska_accidents_monthly.csv")
 write_csv(washington_accidents_monthly,   "data_processed/washington_accidents_monthly.csv")
 write_csv(maine_accidents_monthly,        "data_processed/maine_accidents_monthly.csv")
+write_csv(vermont_accidents_monthly,    "data_processed/vermont_accidents_monthly.csv")
 write_csv(montana_accidents_monthly,      "data_processed/montana_accidents_monthly.csv")
 write_csv(minnesota_accidents_monthly,    "data_processed/minnesota_accidents_monthly.csv")
 write_csv(newyork_accidents_monthly,      "data_processed/newyork_accidents_monthly.csv")
@@ -95,4 +96,5 @@ write_csv(pennsylvania_accidents_monthly, "data_processed/pennsylvania_accidents
 write_csv(newhampshire_accidents_monthly, "data_processed/newhampshire_accidents_monthly.csv")
 write_csv(idaho_accidents_monthly,        "data_processed/idaho_accidents_monthly.csv")
 write_csv(wisconsin_accidents_monthly,    "data_processed/wisconsin_accidents_monthly.csv")
+
 

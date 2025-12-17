@@ -34,7 +34,7 @@ all_years_months <- expand_grid(
 
 # Merge and fill missing counts with 0
 wisconsin_accidents_full_monthly <- all_years_months %>%
-  left_join(idaho_accidents, by = c("YEAR", "MONTH", "COUNTY")) %>%
+  left_join(wisconsin_accidents, by = c("YEAR", "MONTH", "COUNTY")) %>%
   mutate(n_accidents = replace_na(n_accidents, 0)) %>%
   arrange(COUNTY, YEAR, MONTH)
 
@@ -66,7 +66,7 @@ wisconsin_accidents_did_data <- wisconsin_accidents_full_quarterly %>%
   mutate(
     POST = ifelse((YEAR >= 2019 | 
                      YEAR == 2018 & QUARTER == 4), 1, 0),
-    TREAT = ifelse(COUNTY %in% c(3, 7, 31, 51), 1, 0), # 3, 7 ,31 ,51 
+    TREAT = ifelse(COUNTY %in% c(3, 7, 31, 51), 1, 0), # 3, 7, 31, 51 
   ) %>% 
   arrange(COUNTY, YEAR, QUARTER)
 
@@ -119,7 +119,7 @@ wi_did_plot <- wi_did_plot + geom_label(
   data = wisconsin_accidents_did_summary,
   aes(
     x = as.Date(ifelse(POST == 0, "2016-04-01", "2022-04-01")), 
-    y = mean_accidents + 0,
+    y = mean_accidents,
     label = paste0("Mean = ", round(mean_accidents, 3)),
     color = as.factor(TREAT)),
   show.legend = FALSE
