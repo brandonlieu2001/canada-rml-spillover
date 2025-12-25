@@ -1,3 +1,4 @@
+library(tidyverse)
 
 # File: 01_process_fars_data.R =================================================
 
@@ -119,3 +120,88 @@ run_naive_did <- function(did_data) {
   summary(model)
 }
 # File: 06_did_yearly.R =======================================================
+# YEARLY resolution where "year" starts in October (fiscal year)
+# Example:
+#   FY2010 = Jan–Sep 2010
+#   FY2011 = Oct 2010–Sep 2011
+# And Canada legalization (2018-10-01) is the start of FY2019.
+
+# 1. Build yearly dataset (Oct-start fiscal year) from MONTHLY dataset saved in .csv
+build_yearly_dataset_oct <- function(df) {
+  df %>%
+    mutate(
+      # fiscal year label: months Oct–Dec roll into next year
+      FY = ifelse(MONTH >= 10, YEAR + 1L, YEAR),
+      # optional: a date representing the *start* of that fiscal year (Oct 1 of prior calendar year)
+      FY_START_DATE = as.Date(sprintf("%i-10-01", FY - 1L))
+    ) %>%
+    group_by(FY, FY_START_DATE, COUNTY) %>%
+    summarise(n_accidents = sum(n_accidents), .groups = "drop") %>%
+    arrange(COUNTY, FY)
+}
+
+# 2. Mutate YEARLY dataset into DiD format (POST based on fiscal year)
+prepare_did_data_yearly_oct <- function(df_yearly, treat_fips) {
+  df_yearly %>%
+    filter(FY <= 2023 & FY >= 2011) %>%   # DROP incomplete FY2024 and FY2010
+    mutate(
+      # FY2019 starts on 2018-10-01, so POST = 1 for FY >= 2019
+      POST  = ifelse(FY >= 2019, 1, 0),
+      TREAT = ifelse(COUNTY %in% treat_fips, 1, 0)
+    ) %>%
+    arrange(COUNTY, FY)
+}
+
+# 3. Build YEARLY DiD plot (x-axis is fiscal-year start date; vline still at 2018-10-01)
+make_did_plot_yearly <- function(did_data, title_string, control_label, treat_label) {
+  
+  plot_data <- did_data %>%
+    group_by(TREAT, FY) %>%
+    summarise(
+      mean_accidents = mean(n_accidents),
+      n_observations = n(),
+      .groups = "drop"
+    )
+  
+  summary_data <- did_data %>%
+    group_by(TREAT, POST) %>%
+    summarise(mean_accidents = mean(n_accidents), .groups = "drop")
+  
+  ggplot(plot_data,
+         aes(x = FY, y = mean_accidents,
+             group = TREAT, color = as.factor(TREAT))) +
+    geom_point() +
+    geom_line() +
+    geom_vline(
+      xintercept = 2019,   # FY2019 starts Oct 2018
+      linetype = "dashed",
+      color = "black",
+      linewidth = 1
+    ) +
+    scale_x_continuous(
+      breaks = seq(min(plot_data$FY), max(plot_data$FY), by = 1)
+    ) +
+    labs(
+      title = title_string,
+      x = "Year (starts in October)",
+      y = "Average number of accidents",
+      color = "Treatment Group"
+    ) +
+    theme_bw() +
+    scale_color_manual(
+      values = c("0" = "#0072B2", "1" = "#D55E00"),
+      labels = c("0" = control_label, "1" = treat_label)
+    ) +
+    geom_label(
+      data = summary_data,
+      aes(
+        x = ifelse(POST == 0,
+                   min(plot_data$FY) + 1,
+                   max(plot_data$FY) - 1),
+        y = mean_accidents,
+        label = paste0("Mean = ", round(mean_accidents, 3)),
+        color = as.factor(TREAT)
+      ),
+      show.legend = FALSE
+    )
+}

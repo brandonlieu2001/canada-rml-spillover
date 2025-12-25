@@ -1,4 +1,5 @@
 source("code/utils.R")
+library(fixest)
 library(patchwork)
 
 # 1a. Run DiD on states separately ==================================
@@ -415,3 +416,14 @@ pooled_model_drop4 <- lm(
   data = pooled_did_drop4
 )
 print(summary(pooled_model_drop4))
+
+# 3. TWFE ==========================================================
+pooled_did_drop4 <- pooled_did_drop4 %>%
+  mutate(TIME = interaction(YEAR, QUARTER, drop = TRUE))  # e.g., "2018.4"
+
+# Clustered SEs 
+twfe_feols <- feols(n_accidents ~ TREAT*POST | COUNTY + TIME,
+                    data = pooled_did_drop4,
+                    vcov = ~ COUNTY)   # cluster by county
+
+etable(twfe_feols)
