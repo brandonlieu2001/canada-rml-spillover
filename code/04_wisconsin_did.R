@@ -1,7 +1,7 @@
 ## Import packages
 library(tidyverse)
 library(lubridate) # to convert year-month to year-quarter
-library(zoo) # for as.yearqtr
+library(zoo)       # for as.yearqtr
 library(patchwork)
 
 # Wisconsin data cleaning

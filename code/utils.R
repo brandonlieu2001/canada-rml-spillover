@@ -1,16 +1,14 @@
 library(tidyverse)
+library(tidycensus)
 
 # File: 01_process_fars_data.R =================================================
 
-# Write function that pulls the monthly cases for a given state
+# Write function that pulls the monthly cases for a given state AND age filtering
 get_monthly_cases <- function(state_fips, min_age, max_age = Inf) {
+  
   # Select state and summarise number of accidents by month 
   state <- all_state_accident_person %>% 
     filter(STATE == state_fips,
-           AGE != 999,          # FARS defines unknown age from 999 from 2008+
-           VEH_NO != 0,         # VEH_NO = 0 for non-motor vehicle occupants
-           COUNTY != 0,         # Some states have missing county information coded as 0
-           
            AGE >= min_age,
            AGE <= max_age       # if max_age = Inf, this always resolves to TRUE
     ) %>%
@@ -29,7 +27,9 @@ get_monthly_cases <- function(state_fips, min_age, max_age = Inf) {
     left_join(state, by = c("YEAR", "MONTH", "COUNTY")) %>%
     mutate(
       n_accidents = replace_na(n_accidents, 0),
-      STATE = state_fips
+      fips = state_fips,
+      # Convert fips to state, ensuring format is a string with sprintf()
+      state_name = fips_codes$state_name[fips_codes$state_code == sprintf("%02d", as.integer(state_fips))][1]
     ) %>%
     arrange(COUNTY, YEAR, MONTH)
   
@@ -115,7 +115,7 @@ make_did_plot <- function(did_data, title_string, control_label, treat_label) {
 
 # 4. Run naive DiD regression
 run_naive_did <- function(did_data) {
-  model <- lm(n_accidents ~ TREAT + POST + (TREAT * POST), 
+  model <- lm(n_accidents ~ TREAT*POST, 
               data = did_data)
   summary(model)
 }
@@ -127,15 +127,16 @@ run_naive_did <- function(did_data) {
 # And Canada legalization (2018-10-01) is the start of FY2019.
 
 # 1. Build yearly dataset (Oct-start fiscal year) from MONTHLY dataset saved in .csv
-build_yearly_dataset_oct <- function(df) {
-  df %>%
+build_yearly_dataset_oct <- function(monthly_df) {
+  monthly_df %>%
     mutate(
       # fiscal year label: months Oct–Dec roll into next year
       FY = ifelse(MONTH >= 10, YEAR + 1L, YEAR),
-      # optional: a date representing the *start* of that fiscal year (Oct 1 of prior calendar year)
+      # date representing the start of that fiscal year (Oct 1 of prior calendar year)
       FY_START_DATE = as.Date(sprintf("%i-10-01", FY - 1L))
     ) %>%
-    group_by(FY, FY_START_DATE, COUNTY) %>%
+    group_by(FY, FY_START_DATE, COUNTY, state_name) %>%
+    #group_by(FY, FY_START_DATE, COUNTY, ) %>%
     summarise(n_accidents = sum(n_accidents), .groups = "drop") %>%
     arrange(COUNTY, FY)
 }
@@ -152,8 +153,8 @@ prepare_did_data_yearly_oct <- function(df_yearly, treat_fips) {
     arrange(COUNTY, FY)
 }
 
-# 3. Build YEARLY DiD plot (x-axis is fiscal-year start date; vline still at 2018-10-01)
-make_did_plot_yearly <- function(did_data, title_string, control_label, treat_label) {
+# 3. Build YEARLY DiD plot (x-axis is fiscal-year start date; vline at 2018-10-01)
+make_did_plot_yearly <- function(did_data, title_string) {
   
   plot_data <- did_data %>%
     group_by(TREAT, FY) %>%
@@ -183,14 +184,14 @@ make_did_plot_yearly <- function(did_data, title_string, control_label, treat_la
     ) +
     labs(
       title = title_string,
-      x = "Year (starts in October)",
+      x = "Year (Oct-start)",
       y = "Average number of accidents",
       color = "Treatment Group"
     ) +
     theme_bw() +
     scale_color_manual(
       values = c("0" = "#0072B2", "1" = "#D55E00"),
-      labels = c("0" = control_label, "1" = treat_label)
+      labels = c("0" = "Control counties", "1" = "Treatment counties")
     ) +
     geom_label(
       data = summary_data,

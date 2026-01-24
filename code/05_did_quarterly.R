@@ -7,7 +7,7 @@ library(patchwork)
 
 # Import processed data
 idaho_accidents_full_monthly <- 
-  read.csv("data_processed/idaho_accident_person_data.csv")
+  read.csv("data_processed/idaho_accidents_monthly.csv")
 
 # Build quarterly dataset
 id_quarterly <- build_quarterly_dataset(idaho_accidents_full_monthly)
@@ -421,6 +421,8 @@ print(summary(pooled_model_drop4))
 pooled_did_drop4 <- pooled_did_drop4 %>%
   mutate(TIME = interaction(YEAR, QUARTER, drop = TRUE))  # e.g., "2018.4"
 
+
+# 4. TWFE with event study =====================================================
 # Clustered SEs 
 twfe_feols <- feols(n_accidents ~ TREAT*POST | COUNTY + TIME,
                     data = pooled_did_drop4,
