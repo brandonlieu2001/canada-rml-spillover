@@ -1,6 +1,8 @@
-library(tidyr)
+library(tidyverse)
 library(janitor)
 library(readxl)
+library(readr)
+library(fixest)
 
 # 0) Read in file & create treated (border) counties lookup & state lookup =====
 fatal_crashes_monthly <- read_csv("data/data_processed/fatal_crashes_monthly.csv")   # Note: these border counties are defined as those with actual border crossings & 
@@ -197,4 +199,6 @@ etable(main_control_unemployment)
 summary(main_control_unemployment) # IRR = 1.02
 exp(confint(main_control_unemployment, vcov = ~geoid)) # 95% CI: [0.90, 1.16]
 
-
+# 6) Run main model, control: unemployment rate & MEDIAN HOUSEHOLD INCOME ======
+laus_dir <- "data/data_employment"
+laus_files <- list.files(laus_dir, full.names = TRUE)
