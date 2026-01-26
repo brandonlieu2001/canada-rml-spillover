@@ -3,6 +3,7 @@ library(janitor)
 library(readxl)
 library(readr)
 library(fixest)
+source("code/utils.R")
 
 # 0) Read in file & create treated (border) counties lookup & state lookup =====
 fatal_crashes_monthly <- read_csv("data/data_processed/fatal_crashes_monthly.csv")   # Note: these border counties are defined as those with actual border crossings & 
@@ -162,7 +163,7 @@ read_laus_file <- function(path) {
     )
 }
 
-# Build stacked LAUS dataset (only your 14 states)
+# Build stacked LAUS dataset
 laus_df <- map_dfr(laus_files, read_laus_file)
 
 # Merge laus_df with df_border_states by `geoid` and `FY`
@@ -200,5 +201,94 @@ summary(main_control_unemployment) # IRR = 1.02
 exp(confint(main_control_unemployment, vcov = ~geoid)) # 95% CI: [0.90, 1.16]
 
 # 6) Run main model, control: unemployment rate & MEDIAN HOUSEHOLD INCOME ======
-laus_dir <- "data/data_employment"
-laus_files <- list.files(laus_dir, full.names = TRUE)
+income_dir <- "data/data_income"
+income_files <- list.files(income_dir, full.names = TRUE)
+
+# Helper function that returns the row number where header is (move to util.R)
+identify_header_row_income <- function (path) {
+  lines <-  read_excel(path, n_max = 5, col_names = FALSE) # Read in first 10 lines
+  
+  row_has_header_names <- apply(lines, 1, function(row) {
+    row <- as.character(row)
+    
+    # each of these returns TRUE if ANY cell in the row contains the pattern
+    has_state_fips  <- any(str_detect(row, "State FIPS"))
+    has_county_fips <- any(str_detect(row, "County FIPS"))
+    has_income      <- any(str_detect(row, "Median Household Income"))
+    
+    has_state_fips & has_county_fips & has_income
+  })
+  return(which(row_has_header_names)[1]) # which() gives index which is TRUE
+}
+
+# Helper function that retrieves the year
+retrieve_year <- function(path) {
+  file <- read_excel(path, n_max = 1)
+  description <- file[[1]][[1]] # Pulls string of the description that US Census Bureau includes
+  year <- str_extract(description, "\\b(201[0-9]|202[0-3])\\b") # str_extract pulls first match, which is year of file
+  year <- as.integer(year)
+  return(year)
+}
+
+read_income_file <- function(path) {
+  header_row_index <- identify_header_row_income(path)
+  income_file <- read_excel(path, skip = header_row_index - 1) %>% # Skip all rows until the one before the header
+    clean_names() %>%
+    rename(
+      state_fips_code  = any_of(c("state_fips_code", "state_fips")),
+      county_fips_code = any_of(c("county_fips_code", "county_fips"))
+    ) %>%
+    mutate( # Cast as integer so filtering will work
+      state_fips_code  = as.integer(state_fips_code), 
+      county_fips_code = as.integer(county_fips_code)) %>% 
+    filter(
+      state_fips_code %in% state_code_lookup$STATE,
+      county_fips_code != 0
+    ) %>% 
+    transmute(
+      geoid = sprintf("%02d%03d", as.integer(state_fips_code), as.integer(county_fips_code)),
+      FY = retrieve_year(path),          
+      median_household_income = as.numeric(median_household_income)
+    )
+}
+
+# Build stacked income dataset
+income_df <- map_dfr(income_files, read_income_file) 
+
+# Merge income_df with df_border_states by `geoid` and `FY`
+df_border_states <- df_border_states %>%
+  mutate(
+    FY = as.integer(as.character(FY)),
+    geoid = as.character(geoid)
+  ) %>%
+  left_join(
+    income_df %>% mutate(FY = as.integer(FY), geoid = as.character(geoid)),
+    by = c("geoid", "FY")
+  )
+
+# Run main model again
+df_border_states <- df_border_states %>%
+  mutate(
+    geoid = factor(geoid),
+    FY    = factor(FY),
+    STATE = factor(STATE),
+    border = as.integer(border),
+    post_canada = as.integer(post_canada),
+    unemployment_rate = as.numeric(unemployment_rate),
+    pop_total = as.numeric(pop_total),
+    median_household_income = as.numeric(median_household_income)
+  )
+
+main_control_unemployment_income <- fepois(
+  n_crashes ~ border * post_canada + unemployment_rate + median_household_income | geoid + FY,
+  offset  = ~ log(pop_total),
+  cluster = ~ geoid,
+  data    = df_border_states
+)
+
+etable(main_control_unemployment_income)
+summary(main_control_unemployment_income) # IRR = 1.04
+exp(confint(main_control_unemployment_income, vcov = ~geoid)) # 95% CI: [0.91, 1.18]
+
+# Test with just median income
+

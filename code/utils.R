@@ -206,3 +206,6 @@ make_did_plot_yearly <- function(did_data, title_string) {
       show.legend = FALSE
     )
 }
+
+# File: 07_did_poisson_yearly.R ================================================
+# Identify where header row is in income data (varies across years)
