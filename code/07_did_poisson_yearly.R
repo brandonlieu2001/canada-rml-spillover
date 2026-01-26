@@ -152,17 +152,6 @@ exp(confint(main, vcov = ~geoid)) # 95% CI: [0.92, 1.18]
 laus_dir <- "data/data_employment"
 laus_files <- list.files(laus_dir, full.names = TRUE)
 
-read_laus_file <- function(path) {
-  laus_file <- read_excel(path, skip = 1) %>% # Skip title row
-    clean_names() %>% # Clean header names (replace spaces with underscores and lowercase)
-    filter(state_fips_code %in% state_code_lookup$STATE) %>% 
-    transmute(
-      geoid = sprintf("%02d%03d", as.integer(state_fips_code), as.integer(county_fips_code)),
-      FY = as.integer(year),     # `year` treated as FY, as these are annual average & FY defined as Oct-Sep
-      unemployment_rate = as.numeric(unemployment_rate_percent)
-    )
-}
-
 # Build stacked LAUS dataset
 laus_df <- map_dfr(laus_files, read_laus_file)
 
@@ -204,56 +193,28 @@ exp(confint(main_control_unemployment, vcov = ~geoid)) # 95% CI: [0.90, 1.16]
 income_dir <- "data/data_income"
 income_files <- list.files(income_dir, full.names = TRUE)
 
-# Helper function that returns the row number where header is (move to util.R)
-identify_header_row_income <- function (path) {
-  lines <-  read_excel(path, n_max = 5, col_names = FALSE) # Read in first 10 lines
-  
-  row_has_header_names <- apply(lines, 1, function(row) {
-    row <- as.character(row)
-    
-    # each of these returns TRUE if ANY cell in the row contains the pattern
-    has_state_fips  <- any(str_detect(row, "State FIPS"))
-    has_county_fips <- any(str_detect(row, "County FIPS"))
-    has_income      <- any(str_detect(row, "Median Household Income"))
-    
-    has_state_fips & has_county_fips & has_income
-  })
-  return(which(row_has_header_names)[1]) # which() gives index which is TRUE
-}
-
-# Helper function that retrieves the year
-retrieve_year <- function(path) {
-  file <- read_excel(path, n_max = 1)
-  description <- file[[1]][[1]] # Pulls string of the description that US Census Bureau includes
-  year <- str_extract(description, "\\b(201[0-9]|202[0-3])\\b") # str_extract pulls first match, which is year of file
-  year <- as.integer(year)
-  return(year)
-}
-
-read_income_file <- function(path) {
-  header_row_index <- identify_header_row_income(path)
-  income_file <- read_excel(path, skip = header_row_index - 1) %>% # Skip all rows until the one before the header
-    clean_names() %>%
-    rename(
-      state_fips_code  = any_of(c("state_fips_code", "state_fips")),
-      county_fips_code = any_of(c("county_fips_code", "county_fips"))
-    ) %>%
-    mutate( # Cast as integer so filtering will work
-      state_fips_code  = as.integer(state_fips_code), 
-      county_fips_code = as.integer(county_fips_code)) %>% 
-    filter(
-      state_fips_code %in% state_code_lookup$STATE,
-      county_fips_code != 0
-    ) %>% 
-    transmute(
-      geoid = sprintf("%02d%03d", as.integer(state_fips_code), as.integer(county_fips_code)),
-      FY = retrieve_year(path),          
-      median_household_income = as.numeric(median_household_income)
-    )
-}
-
 # Build stacked income dataset
 income_df <- map_dfr(income_files, read_income_file) 
+
+# Deflate using base 1982-1984 from US BLS (https://data.bls.gov/pdq/SurveyOutputServlet)
+cpi_data <- read_excel("data/data_cpi/SeriesReport-20260126144151_e02568.xlsx", skip = 10) %>% 
+  clean_names() %>% 
+  transmute(
+    year = as.integer(year),
+    annual_cpi = as.numeric(annual)
+  )
+
+# Set 2023 as reference year (e.g. after deflation, real dollars reported in 2023 real dollars)
+reference_year_cpi <- cpi_data %>% filter(cpi_data$year == 2023) %>% 
+  pull(annual_cpi)
+
+income_df_deflated <- income_df %>%
+  left_join(cpi_data, by = c("FY" = "year")) %>% 
+  mutate(
+    median_household_income_deflated = median_household_income * (reference_year_cpi / annual_cpi)
+  ) %>% 
+  select(geoid, FY, median_household_income_deflated)
+
 
 # Merge income_df with df_border_states by `geoid` and `FY`
 df_border_states <- df_border_states %>%
@@ -262,7 +223,7 @@ df_border_states <- df_border_states %>%
     geoid = as.character(geoid)
   ) %>%
   left_join(
-    income_df %>% mutate(FY = as.integer(FY), geoid = as.character(geoid)),
+    income_df_deflated %>% mutate(FY = as.integer(FY), geoid = as.character(geoid)),
     by = c("geoid", "FY")
   )
 
@@ -276,19 +237,21 @@ df_border_states <- df_border_states %>%
     post_canada = as.integer(post_canada),
     unemployment_rate = as.numeric(unemployment_rate),
     pop_total = as.numeric(pop_total),
-    median_household_income = as.numeric(median_household_income)
+    median_household_income_deflated = as.numeric(median_household_income_deflated)
   )
 
 main_control_unemployment_income <- fepois(
-  n_crashes ~ border * post_canada + unemployment_rate + median_household_income | geoid + FY,
+  n_crashes ~ border * post_canada + unemployment_rate + median_household_income_deflated | geoid + FY,
   offset  = ~ log(pop_total),
   cluster = ~ geoid,
   data    = df_border_states
 )
 
 etable(main_control_unemployment_income)
-summary(main_control_unemployment_income) # IRR = 1.04
-exp(confint(main_control_unemployment_income, vcov = ~geoid)) # 95% CI: [0.91, 1.18]
+summary(main_control_unemployment_income) # IRR = 1.03
+exp(coefficients(summary(main_control_unemployment_income)))
+exp(confint(main_control_unemployment_income, vcov = ~geoid)) # 95% CI: [0.91, 1.17]
 
-# Test with just median income
+# 7) Incorporate controls for RML and MML ======================================
 
+# 8) Event-study ===============================================================

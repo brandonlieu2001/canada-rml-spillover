@@ -208,4 +208,63 @@ make_did_plot_yearly <- function(did_data, title_string) {
 }
 
 # File: 07_did_poisson_yearly.R ================================================
-# Identify where header row is in income data (varies across years)
+read_laus_file <- function(path) {
+  laus_file <- read_excel(path, skip = 1) %>% # Skip title row
+    clean_names() %>% # Clean header names (replace spaces with underscores and lowercase)
+    filter(state_fips_code %in% state_code_lookup$STATE) %>% 
+    transmute(
+      geoid = sprintf("%02d%03d", as.integer(state_fips_code), as.integer(county_fips_code)),
+      FY = as.integer(year),     # `year` treated as FY, as these are annual average & FY defined as Oct-Sep
+      unemployment_rate = as.numeric(unemployment_rate_percent)
+    )
+}
+
+read_income_file <- function(path) {
+  header_row_index <- identify_header_row_income(path)
+  income_file <- read_excel(path, skip = header_row_index - 1) %>% # Skip all rows until the one before the header
+    clean_names() %>%
+    rename(
+      state_fips_code  = any_of(c("state_fips_code", "state_fips")),
+      county_fips_code = any_of(c("county_fips_code", "county_fips"))
+    ) %>%
+    mutate( # Cast as integer so filtering will work
+      state_fips_code  = as.integer(state_fips_code), 
+      county_fips_code = as.integer(county_fips_code)) %>% 
+    filter(
+      state_fips_code %in% state_code_lookup$STATE,
+      county_fips_code != 0
+    ) %>% 
+    transmute(
+      geoid = sprintf("%02d%03d", as.integer(state_fips_code), as.integer(county_fips_code)),
+      FY = retrieve_year(path),          
+      median_household_income = as.numeric(median_household_income)
+    )
+}
+
+
+
+# Helper function that returns the row number where header is
+identify_header_row_income <- function (path) {
+  lines <-  read_excel(path, n_max = 5, col_names = FALSE) # Read in first 10 lines
+  
+  row_has_header_names <- apply(lines, 1, function(row) {
+    row <- as.character(row)
+    
+    # each of these returns TRUE if ANY cell in the row contains the pattern
+    has_state_fips  <- any(str_detect(row, "State FIPS"))
+    has_county_fips <- any(str_detect(row, "County FIPS"))
+    has_income      <- any(str_detect(row, "Median Household Income"))
+    
+    has_state_fips & has_county_fips & has_income
+  })
+  return(which(row_has_header_names)[1]) # which() gives index which is TRUE
+}
+
+# Helper function that retrieves the year from income file
+retrieve_year <- function(path) {
+  file <- read_excel(path, n_max = 1)
+  description <- file[[1]][[1]] # Pulls string of the description that US Census Bureau includes
+  year <- str_extract(description, "\\b(201[0-9]|202[0-3])\\b") # str_extract pulls first match, which is year of file
+  year <- as.integer(year)
+  return(year)
+}
