@@ -208,6 +208,24 @@ make_did_plot_yearly <- function(did_data, title_string) {
 }
 
 # File: 07_did_poisson_yearly.R ================================================
+read_pop_file <- function(path) {
+  read_csv(path, show_col_types = FALSE) %>%
+    clean_names() %>% # Replace spaces with underscores with clean_names from janitor package
+    select(           # Keep only the columns we actually want
+      county,
+      county_code,
+      year = yearly_july_1st_estimates,
+      population
+    ) %>%
+    mutate(
+      year = as.integer(year),
+      county_code = as.integer(county_code),
+      population = as.numeric(population)
+    ) %>% 
+    filter(!(is.na(county) & is.na(county_code) & is.na(year) & is.na(population)))
+}
+
+
 read_laus_file <- function(path) {
   laus_file <- read_excel(path, skip = 1) %>% # Skip title row
     clean_names() %>% # Clean header names (replace spaces with underscores and lowercase)

@@ -6,26 +6,36 @@ library(fixest)
 source("code/utils.R")
 
 # 0) Read in file & create treated (border) counties lookup & state lookup =====
-fatal_crashes_monthly <- read_csv("data/data_processed/fatal_crashes_monthly.csv")   # Note: these border counties are defined as those with actual border crossings & 
-                                                                                # contains all fatal crashes across US states and DC
-treat_fips_lookup <- list(
-  # "alaska" = c(185, 290, 240, 66, 282, 105, 230, 100, 110, 195, 275, 130),
-  "idaho" = c(21),
-  "maine" = c(7, 25, 3, 29),
-  "michigan" = c(147, 33, 163),
-  "minnesota" = c(69, 135, 77, 71, 137, 75, 31),
-  "montana" = c(53, 29, 35, 101, 51, 41, 5, 71, 105, 19, 91),
-  "newhampshire" = c(7),
-  "newyork" = c(29, 63, 45, 89, 33, 19),
-  "northdakota" = c(23, 13, 75, 9, 79, 95, 19, 67),
-  "ohio" = c(143),
-  "pennsylvania" = c(49),
-  "vermont" = c(11, 13, 9, 19),
-  "washington" = c(9, 55, 73, 47, 19, 65, 51),
-  "wisconsin" = c(31, 7, 3, 51)
-)
+fatal_crashes_monthly <- read_csv("data/data_processed/fatal_crashes_monthly.csv")   
 
-state_code_lookup <- tibble::tribble(
+treat_fips_lookup_physicalborder <-
+  readRDS("data/data_treatment/treat_fips_lookup_physicalborder.rds")
+
+treat_fips_lookup_within50 <-
+  readRDS("data/data_treatment/treat_fips_lookup_within50.rds")
+
+treat_fips_lookup_within100 <-
+  readRDS("data/data_treatment/treat_fips_lookup_within100.rds")
+
+# `treat_fips_lookup_bordercrossing` is from an early draft where BNL hand-checked PoE.
+# treat_fips_lookup_bordercrossing <- list(
+#   # "alaska" = c(185, 290, 240, 66, 282, 105, 230, 100, 110, 195, 275, 130),
+#   "idaho" = c(21),
+#   "maine" = c(7, 25, 3, 29),
+#   "michigan" = c(147, 33, 163),
+#   "minnesota" = c(69, 135, 77, 71, 137, 75, 31),
+#   "montana" = c(53, 29, 35, 101, 51, 41, 5, 71, 105, 19, 91),
+#   "newhampshire" = c(7),
+#   "newyork" = c(29, 63, 45, 89, 33, 19),
+#   "northdakota" = c(23, 13, 75, 9, 79, 95, 19, 67),
+#   "ohio" = c(143),
+#   "pennsylvania" = c(49),
+#   "vermont" = c(11, 13, 9, 19),
+#   "washington" = c(9, 55, 73, 47, 19, 65, 51)
+#   # "wisconsin" = c(31, 7, 3, 51)
+# )
+
+state_code_lookup <- tribble(
   ~state_name,      ~STATE,
   # "alaska",           2,
   "washington",      53,
@@ -39,18 +49,19 @@ state_code_lookup <- tibble::tribble(
   "ohio",            39,
   "pennsylvania",    42,
   "newhampshire",    33,
-  "idaho",           16,
-  "wisconsin",       55
+  "idaho",           16
+  # "wisconsin",       55
 )
+
 
 # 1) Build county x FY (Oct–Sep) crash counts from fatal_crashes_monthly =======
 #  Note: fatal_crashes_monthly has: STATE, YEAR, MONTH, COUNTY, n_fatal_crashes
 df_base <- fatal_crashes_monthly %>%
-  filter(STATE %in% state_code_lookup$STATE) %>% # Filter to only 13 states bordering Canada (omitted Alaska)
+  filter(STATE %in% state_code_lookup$STATE) %>% # Filter to only 13 states bordering Canada (omitting Alaska)
   mutate(
     # Redefine year to align with Canada's legalization: Oct–Dec => next FY
     FY = if_else(MONTH >= 10, YEAR + 1L, YEAR),
-    # Post period: FY2019 is first full FY after Oct2018
+    # Post period: FY2019 is first full FY starting from Oct2018
     post_canada = as.integer(FY >= 2019L),
   ) %>%
   filter(FY >= 2011L, FY <= 2023L) %>%  # keep only complete FYs
@@ -64,41 +75,58 @@ df_base <- fatal_crashes_monthly %>%
 # Step 1. Convert new df, `treat_counties` with state, geoid (to be left_join'ed to df_base)
 # Step 2. df_base %>% left_join(treat_counties) by state and geoid
 
-treat_counties <- 
-  imap_dfr(treat_fips_lookup, function(fips, state) {        
-  tibble(state_name = state, COUNTY = as.integer(fips))}) %>% # Pivot treat_fips_lookup to long format
+# OLD. Treatment = counties only having border crossings
+# treat_counties_bordercrossing <-
+#   imap_dfr(treat_fips_lookup_bordercrossing, function(fips, state) {
+#   tibble(state_name = state, COUNTY = as.integer(fips))}) %>% # Pivot treat_fips_lookup to long format
+#   left_join(state_code_lookup, by = "state_name") %>%         # Add state fips as a column using state_code_lookup via left_join
+#   transmute(                                                  # Create geoid and state to link to df_base, drop all other col (hence transmute & !mutate)
+#     STATE = as.integer(STATE),
+#     geoid = sprintf("%02d%03d", as.integer(STATE), as.integer(COUNTY)),
+#     border = 1L)
+
+# TODO: Turn into function where you can just specify the df to create
+# A. Treatment = physical border (defined using shapefiles and international boundary)
+treat_counties_physicalborder <-
+  imap_dfr(treat_fips_lookup_physicalborder, function(fips, state) {
+    tibble(state_name = state, COUNTY = as.integer(fips))}) %>% # Pivot treat_fips_lookup to long format
   left_join(state_code_lookup, by = "state_name") %>%         # Add state fips as a column using state_code_lookup via left_join
   transmute(                                                  # Create geoid and state to link to df_base, drop all other col (hence transmute & !mutate)
     STATE = as.integer(STATE),
     geoid = sprintf("%02d%03d", as.integer(STATE), as.integer(COUNTY)),
-    border = 1L) 
+    border = 1L)
 
+
+# B. Treatment = within 50 miles of physical border county (NBER County Distance Database)
+treat_counties_within50 <-
+  imap_dfr(treat_fips_lookup_within50, function(fips, state) {
+    tibble(state_name = state, COUNTY = as.integer(fips))}) %>%
+  left_join(state_code_lookup, by = "state_name") %>%
+  transmute(
+    STATE = as.integer(STATE),
+    geoid = sprintf("%02d%03d", as.integer(STATE), as.integer(COUNTY)),
+    border = 1L)
+
+
+# C. Treatment = within 100 miles of physical border county (NBER County Distance Database)
+treat_counties_within100 <-
+  imap_dfr(treat_fips_lookup_within100, function(fips, state) {
+    tibble(state_name = state, COUNTY = as.integer(fips))}) %>%
+  left_join(state_code_lookup, by = "state_name") %>%
+  transmute(
+    STATE = as.integer(STATE),
+    geoid = sprintf("%02d%03d", as.integer(STATE), as.integer(COUNTY)),
+    border = 1L)
+
+# Change here to vary treatment definition ********
 df_base <- df_base %>%
-  left_join(treat_counties, by = c("STATE", "geoid")) %>%
+  left_join(treat_counties_physicalborder, by = c("STATE", "geoid")) %>%
   mutate(border = if_else(is.na(border), 0L, border))
 
 # 3) Build pop_2010_2024 and merge with df_base ================================
 # File paths
 pop_2010_2020_path <- "data/data_population/n_Single-Race Population Estimates 2010-2020.csv"
 pop_2020_2024_path <- "data/data_population/n_Single-Race Population Estimates 2020-2024.csv"
-
-# Read + clean function
-read_pop_file <- function(path) {
-  read_csv(path, show_col_types = FALSE) %>%
-    clean_names() %>% # Replace spaces with underscores with clean_names from janitor package
-    select(           # Keep only the columns we actually want
-      county,
-      county_code,
-      year = yearly_july_1st_estimates,
-      population
-    ) %>%
-    mutate(
-      year = as.integer(year),
-      county_code = as.integer(county_code),
-      population = as.numeric(population)
-    ) %>% 
-    filter(!(is.na(county) & is.na(county_code) & is.na(year) & is.na(population)))
-}
 
 # Read both files
 pop_2010_2020 <- read_pop_file(pop_2010_2020_path)
@@ -129,7 +157,7 @@ df_border_states <- df_base %>%
   left_join(pop_df2, by = c("geoid", "FY"))
 
 
-# 4) Main model: Poisson TWFE with offset log(pop_total), no controls ==========
+# 4a) Main model: Poisson TWFE with offset log(pop_total), no controls ==========
 df_border_states <- df_border_states %>%
   mutate(
     geoid = factor(geoid),
@@ -145,10 +173,11 @@ main <- fepois(
 )
 
 etable(main)
-summary(main) # IRR = 1.04
-exp(confint(main, vcov = ~geoid)) # 95% CI: [0.92, 1.18]
+summary(main) 
+exp(coeftable(main)) # IRR = 1.07
+exp(confint(main, vcov = ~geoid)) # 95% CI
 
-# 5) Run main model, control: unemployment rate ================================
+# 4b) Main model: control: unemployment rate ================================
 laus_dir <- "data/data_employment"
 laus_files <- list.files(laus_dir, full.names = TRUE)
 
@@ -186,10 +215,11 @@ main_control_unemployment <- fepois(
 )
 
 etable(main_control_unemployment)
-summary(main_control_unemployment) # IRR = 1.02
-exp(confint(main_control_unemployment, vcov = ~geoid)) # 95% CI: [0.90, 1.16]
+summary(main_control_unemployment)
+exp(coeftable(main_control_unemployment)) # IRR = 1.05
+exp(confint(main_control_unemployment, vcov = ~geoid)) # 95% CI: 
 
-# 6) Run main model, control: unemployment rate & MEDIAN HOUSEHOLD INCOME ======
+# 4c) Main model: control: unemployment rate & MEDIAN HOUSEHOLD INCOME ======
 income_dir <- "data/data_income"
 income_files <- list.files(income_dir, full.names = TRUE)
 
@@ -231,8 +261,9 @@ df_border_states <- df_border_states %>%
 df_border_states <- df_border_states %>%
   mutate(
     geoid = factor(geoid),
-    FY    = factor(FY),
     STATE = factor(STATE),
+    FY_fe  = factor(FY),                    # for year fixed effects
+    FY_num = as.integer(as.character(FY)),  # for linear trend slopes
     border = as.integer(border),
     post_canada = as.integer(post_canada),
     unemployment_rate = as.numeric(unemployment_rate),
@@ -241,17 +272,206 @@ df_border_states <- df_border_states %>%
   )
 
 main_control_unemployment_income <- fepois(
-  n_crashes ~ border * post_canada + unemployment_rate + median_household_income_deflated | geoid + FY,
+  n_crashes ~ border * post_canada + unemployment_rate + median_household_income_deflated | geoid + FY_fe,
   offset  = ~ log(pop_total),
   cluster = ~ geoid,
   data    = df_border_states
 )
 
 etable(main_control_unemployment_income)
-summary(main_control_unemployment_income) # IRR = 1.03
-exp(coefficients(summary(main_control_unemployment_income)))
-exp(confint(main_control_unemployment_income, vcov = ~geoid)) # 95% CI: [0.91, 1.17]
+summary(main_control_unemployment_income)
+exp(coefficients(summary(main_control_unemployment_income)))  
+exp(confint(main_control_unemployment_income, vcov = ~geoid)) 
 
-# 7) Incorporate controls for RML and MML ======================================
+# Main model, with state-specific trends
+main_control_unemployment_income_statelinear <- fepois(
+  n_crashes ~ border * post_canada + unemployment_rate + median_household_income_deflated
+  | geoid + FY + STATE[FY_num],
+  offset  = ~ log(pop_total),
+  cluster = ~ geoid,
+  data    = df_border_states
+)
 
-# 8) Event-study ===============================================================
+etable(main_control_unemployment_income_statelinear)
+summary(main_control_unemployment_income_statelinear)
+exp(coefficients(summary(main_control_unemployment_income_statelinear)))  # IRR = 1.03
+exp(confint(main_control_unemployment_income_statelinear, vcov = ~geoid)) # 95% CI: [0.94, 1.12]
+
+# Main model, with state^year FE
+main_control_unemployment_income_stateyearFE <- fepois(
+  n_crashes ~ border * post_canada + unemployment_rate + median_household_income_deflated 
+  | geoid + STATE^FY_fe,
+  offset  = ~ log(pop_total),
+  cluster = ~ geoid,
+  data    = df_border_states
+)
+
+etable(main_control_unemployment_income_stateyearFE)
+summary(main_control_unemployment_income_stateyearFE)
+exp(coefficients(summary(main_control_unemployment_income_stateyearFE)))  # IRR = 1.03
+exp(confint(main_control_unemployment_income_stateyearFE, vcov = ~geoid)) # 95% CI: [0.94, 1.13]
+
+# # 5) TWFE event-study ==========================================================
+# df_border_states_es <- df_border_states %>% 
+#   mutate(
+#     FY = as.integer(as.character(FY)),
+#     time_to_treat = if_else(border == 1, FY - 2019L, 0L)
+#   )
+# 
+# # Use `fixest` package's built-in event study estimator
+# main_control_unemployment_income_es <- fepois(
+#   n_crashes ~ i(time_to_treat, border, ref = -1) +        # ref = 2017 (implementation - 1)
+#   unemployment_rate + median_household_income_deflated |  # controls
+#   geoid + FY,
+#   offset  = ~ log(pop_total),
+#   cluster = ~ geoid, # Clustered SE by county
+#   data    = df_border_states_es
+# )
+# 
+# summary(main_control_unemployment_income_es)
+# etable(main_control_unemployment_income_es)
+# 
+# exp(coefficients(main_control_unemployment_income_es))
+# 
+# # Plot event study estimates (not IRR)
+# iplot(main_control_unemployment_income_es,
+#       xlab = "Time to treatment",
+#       main = "Event-study")
+# 
+# # Plot event study with IRR scale
+# # Get the coefficients and confidence intervals manually
+# es_coefs <- coeftable(main_control_unemployment_income_es)
+# 
+# # Extract event study coefficients (those starting with "time_to_treat::")
+# es_rows <- grepl("^time_to_treat::", rownames(es_coefs))
+# es_data <- es_coefs[es_rows, ]
+# 
+# # Extract time periods from coefficient names
+# time_periods <- as.numeric(gsub("time_to_treat::([-0-9]+):border", "\\1", 
+#                                 rownames(es_data)))
+# 
+# # Create data frame with IRRs
+# plot_data <- data.frame(
+#   time = time_periods,
+#   irr = exp(es_data[, "Estimate"]),
+#   ci_lower = exp(es_data[, "Estimate"] - 1.96 * es_data[, "Std. Error"]),
+#   ci_upper = exp(es_data[, "Estimate"] + 1.96 * es_data[, "Std. Error"])
+# )
+# 
+# # Since there's no staggered rollout, can just keep x-axis as year for interpretability
+# plot_data <- plot_data %>% 
+#   mutate(FY = 2019L + time_periods)
+# 
+# # Create ES plot w/ IRRs
+# es_plot_physicalborder <- ggplot(plot_data, aes(x = FY, y = irr)) +
+#   geom_hline(yintercept = 1, linetype = "solid", color = "black", linewidth = 0.2) +
+#   geom_vline(xintercept = 2018, linetype = "dashed", color = "gray50", linewidth = 0.5) +
+#   geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), 
+#                 width = 0, color = "black", linewidth = 0.6) +
+# 
+#   geom_point(size = 2, color = "black") +
+#   geom_point(data = data.frame(FY = 2018, irr = 1), 
+#              aes(x = FY, y = irr), 
+#              shape = 16, size = 2, color = "black") +
+# 
+#   scale_x_continuous(breaks = seq(min(plot_data$FY), max(plot_data$FY), by = 1)) +
+#   
+#   scale_y_continuous(limits = c(0.6, 1.4),
+#                      labels = scales::label_number(accuracy = 0.1),
+#   ) +
+#   
+#   # Labels
+#   labs(
+#     x = "year",
+#     y = "IRR",
+#     title = "border = physical border county"
+#   ) +
+#   theme_classic() +
+#   theme(
+#     panel.grid.major.y = element_line(color = "gray80", linewidth = 0.3),
+#     axis.title = element_text(color = "black", size = 8),
+#     axis.text  = element_text(color = "black", size = 8),
+#     # Draw left & bottom axes
+#     axis.line.x.bottom = element_line(color = "black", linewidth = 0.4),
+#     axis.line.y.left   = element_line(color = "black", linewidth = 0.4),
+#     plot.title = element_text(size = 9)
+#     
+#   )
+# 
+# es_plot_physicalborder
+# 
+# # 6) Distance specification (Archived) =========================================
+# # TODO: this uses distance from Canadian border (should be from PoE county)
+# # Load distance data
+# # distance <- read.csv("data/data_distance/county_to_canada_distance.csv") %>% 
+# #   mutate(geoid = as.character(geoid))
+# # 
+# # stopifnot(!anyDuplicated(distance$geoid))
+# # 
+# # # Merge with df_border_states
+# # df_border_states_distance <- df_border_states %>%
+# #   mutate(geoid = as.character(geoid)) %>%
+# #   left_join(distance, by = "geoid")
+# # 
+# # df_border_states_distance <- df_border_states_distance %>%
+# #   mutate(
+# #     geoid = factor(geoid),
+# #     FY_fe  = factor(FY),                    # for year fixed effects
+# #     FY_num = as.integer(as.character(FY)),  # for linear trend slopes
+# #     STATE = factor(STATE),
+# #     post_canada = as.integer(post_canada),
+# #     unemployment_rate = as.numeric(unemployment_rate),
+# #     pop_total = as.numeric(pop_total),
+# #     median_household_income_deflated = as.numeric(median_household_income_deflated),
+# #     dist_haversine_mi_100 = as.numeric(dist_haversine_mi_100)
+# #   )
+# # 
+# # # Distance spec, county FE & year FE
+# # distance_spec <- fepois(
+# #   n_crashes ~ dist_haversine_mi_100*post_canada + unemployment_rate + median_household_income_deflated 
+#   # | geoid + FY_fe,
+# #   offset  = ~ log(pop_total),
+# #   cluster = ~ geoid,
+# #   data    = df_border_states_distance
+# # )
+# # 
+# # etable(distance_spec)
+# # summary(distance_spec)
+# # 
+# # exp(coeftable(distance_spec))
+# # exp(confint(distance_spec))
+# # # IRR: 0.969
+# # # 95% CI: [0.9424, 0.9968]
+# # 
+# # # Distance spec, county FE & year FE  + state-specific linear trends
+# # distance_spec_statelinear <- fepois(n_crashes ~ dist_haversine_mi_100*post_canada + 
+# #          unemployment_rate + median_household_income_deflated | 
+# #          geoid + FY_fe + STATE[FY_num],  # state-specific linear trends
+# #        data = df_border_states_distance,
+# #        offset = ~log(pop_total),
+# #        cluster = ~geoid)
+# # 
+# # etable(distance_spec_statelinear)
+# # summary(distance_spec_statelinear)
+# # 
+# # exp(coeftable(distance_spec_statelinear))
+# # exp(confint(distance_spec_statelinear))
+# # # IRR: 1.003
+# # # 95% CI: [0.9768, 1.030]
+# # 
+# # # Distance spec, county FE & state^year FE (most conservative)
+# # distance_spec_stateyearFE <- fepois(
+# #   n_crashes ~ dist_haversine_mi_100 * post_canada + unemployment_rate + median_household_income_deflated 
+#   # | geoid + STATE^FY_fe,
+# #   offset  = ~ log(pop_total),
+# #   cluster = ~ geoid,
+# #   data    = df_border_states_distance
+# # )
+# # 
+# # etable(distance_spec_stateyearFE)
+# # summary(distance_spec_stateyearFE)
+# # 
+# # exp(coeftable(distance_spec_stateyearFE))
+# # exp(confint(distance_spec_stateyearFE))
+# # # IRR: 1.008
+# # # 95% CI: [0.978, 1.039]
