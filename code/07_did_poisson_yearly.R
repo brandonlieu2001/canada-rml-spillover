@@ -120,7 +120,7 @@ treat_counties_within100 <-
 
 # Change here to vary treatment definition ********
 df_base <- df_base %>%
-  left_join(treat_counties_physicalborder, by = c("STATE", "geoid")) %>%
+  left_join(treat_counties_within100, by = c("STATE", "geoid")) %>%
   mutate(border = if_else(is.na(border), 0L, border))
 
 # 3) Build pop_2010_2024 and merge with df_base ================================

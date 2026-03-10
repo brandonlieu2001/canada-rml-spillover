@@ -6,10 +6,10 @@
 library(tidyverse)
 
 # Read in `person.csv` & `accident.csv` from each year
-year_directory <- list.files("data/data_raw")
+year_directory <- list.files("data_raw/fars_raw")
 
-person_filepaths <- paste0("data/data_raw/", year_directory, "/person.csv")
-accident_filepaths <- paste0("data/data_raw/", year_directory, "/accident.csv")
+person_filepaths <- paste0("data_raw/fars_raw/", year_directory, "/person.csv")
+accident_filepaths <- paste0("data_raw/fars_raw/", year_directory, "/accident.csv")
 
 person_data <- lapply(person_filepaths, read.csv)
 accident_data <- lapply(accident_filepaths, read.csv)
