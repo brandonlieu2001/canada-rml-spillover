@@ -26,6 +26,10 @@ create_es_plot_df <- function(es_model) {
 plot_es <- function(es_plot_data, title_label) {
   return(
     ggplot(es_plot_data, aes(x = FY, y = irr)) +
+      
+      annotate("rect", xmin = 2018.5, xmax = Inf, ymin = -Inf, ymax = Inf,
+               fill = "gray90", alpha = 0.4) +
+      
       geom_hline(yintercept = 1, linetype = "solid", color = "black", linewidth = 0.2) +
       geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), 
                     width = 0.2, color = "black", linewidth = 0.6) +
@@ -34,6 +38,8 @@ plot_es <- function(es_plot_data, title_label) {
       geom_point(data = data.frame(FY = 2018, irr = 1), 
                  aes(x = FY, y = irr), 
                  shape = 16, size = 2, color = "black") +
+      
+      geom_vline(xintercept = 2018.5, linetype = "dashed", color = "gray40", linewidth = 0.4) +
       
       scale_x_continuous(breaks = seq(min(es_plot_data$FY), max(es_plot_data$FY), by = 1)) +
       
