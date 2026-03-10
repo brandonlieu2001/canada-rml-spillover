@@ -37,18 +37,6 @@ etable(main_full)
 exp(coefficients(summary(main_full)))  
 exp(confint(main_full))
 
-
-# negative binomial
-main_full <- fenegbin(n_crashes ~ border:post_canada + unemployment_rate + median_household_income_deflated
-                    | geoid + FY_fe,  # FE
-                    cluster = ~ geoid,
-                    offset = ~ log(pop_total),
-                    data = physicalborder_df)
-
-etable(main_full)
-exp(coefficients(summary(main_full)))  
-exp(confint(main_full))
-
 # state by state ====
 
 # 1) Define the model
