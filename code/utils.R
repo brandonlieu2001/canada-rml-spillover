@@ -1,43 +1,7 @@
 library(tidyverse)
 library(tidycensus)
 
-# File: 01_process_fars_data.R =================================================
-
-# Write function that pulls the monthly cases for a given state AND age filtering
-get_monthly_cases <- function(state_fips, min_age, max_age = Inf) {
-  
-  # Select state and summarise number of accidents by month 
-  state <- all_state_accident_person %>% 
-    filter(STATE == state_fips,
-           AGE >= min_age,
-           AGE <= max_age       # if max_age = Inf, this always resolves to TRUE
-    ) %>%
-    group_by(YEAR, MONTH, COUNTY) %>%
-    summarise(n_accidents = n_distinct(ST_CASE))
-  
-  # Build state-specific full grid
-  full_grid <- expand_grid(
-    YEAR   = seq(min(state$YEAR), max(state$YEAR)), # full year range
-    MONTH  = 1:12,                                  # all months
-    COUNTY = unique(state$COUNTY)
-  )
-  
-  # Join and fill zeroes
-  state <- full_grid %>% 
-    left_join(state, by = c("YEAR", "MONTH", "COUNTY")) %>%
-    mutate(
-      n_accidents = replace_na(n_accidents, 0),
-      fips = state_fips,
-      # Convert fips to state, ensuring format is a string with sprintf()
-      state_name = fips_codes$state_name[fips_codes$state_code == sprintf("%02d", as.integer(state_fips))][1]
-    ) %>%
-    arrange(COUNTY, YEAR, MONTH)
-  
-  return(state)
-}
-
 # File: 05_did_quarterly.R =====================================================
-
 # 1. Build quarterly dataset from monthly dataset saved in .csv
 
 build_quarterly_dataset <- function(df) {
